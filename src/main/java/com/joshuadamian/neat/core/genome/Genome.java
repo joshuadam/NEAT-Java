@@ -9,9 +9,7 @@ import com.joshuadamian.neat.util.trackers.*;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationData;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationTracker;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationType;
-import com.joshuadamian.neat.weightinitialization.ConstantWeightInitialization;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -35,8 +33,9 @@ public class Genome {
     private GenomeTracker genomeTracker;
     private NodeTracker nodeTracker;
     private InnovationTracker innovationTracker;
+    private int populationId;
 
-    public Genome(ArrayList<NodeGene> nodeGenes, ArrayList<ConnectionGene> connectionGenes, Config config) {
+    public Genome(ArrayList<NodeGene> nodeGenes, ArrayList<ConnectionGene> connectionGenes, Config config, int populationId) {
         this.nodeGenes = nodeGenes;
         this.connectionGenes = connectionGenes;
         this.inputNodes = nodeGenes.stream()
@@ -51,10 +50,11 @@ public class Genome {
                 .findFirst()
                 .orElse(null);
         this.config = config;
-        this.genomeTracker = StaticManager.getGenomeTracker(config);
-        this.nodeTracker = StaticManager.getNodeTracker(config);
-        this.innovationTracker = StaticManager.getInnovationTracker(config);
-        this.ID = genomeTracker.getNextGenomeID();
+        this.genomeTracker = StaticManager.getGenomeTracker(populationId);
+        this.nodeTracker = StaticManager.getNodeTracker(populationId);
+        this.innovationTracker = StaticManager.getInnovationTracker(populationId);
+        this.ID = genomeTracker.getNextGenomeId();
+        this.populationId = populationId;
     }
 
     public double[] propagate(double[] inputs) {
@@ -175,9 +175,8 @@ public class Genome {
             }
 
             InnovationData innovationData = innovationTracker.trackInnovation(
-                    InnovationType.addConnection,
-                    fromNode,
-                    toNode
+                    fromNode.getId(),
+                    toNode.getId()
             );
 
             ConnectionGene newConnection = new ConnectionGene(
@@ -218,21 +217,25 @@ public class Genome {
         }
 
         selectedConnection.setEnabled(false);
-        HiddenNode newNode = new HiddenNode(nodeTracker.getNextNodeID(), config);
-        nodeGenes.add(newNode);
-
-        InnovationData innovationData = innovationTracker.trackInnovation(
-                InnovationType.addNode,
+        Map<String, Object> innovations = innovationTracker.trackAddNodeInnovation(
                 selectedConnection.getInNode(),
-                selectedConnection.getOutNode()
+                selectedConnection.getOutNode(),
+                nodeTracker
         );
+
+        Integer newNodeId = (Integer) innovations.get("newNodeId");
+        InnovationData inToNewInnovation = (InnovationData) innovations.get("inToNew");
+        InnovationData newToOutInnovation = (InnovationData) innovations.get("newToOut");
+
+        HiddenNode newNode = new HiddenNode(newNodeId, config);
+        nodeGenes.add(newNode);
 
         ConnectionGene connection1 = new ConnectionGene(
                 selectedConnection.getInNode(),
                 newNode,
-                new ConstantWeightInitialization(1.0).initializeWeight(),
+                1,
                 true,
-                innovationData.getInnovationNumber(),
+                inToNewInnovation.getInnovationNumber(),
                 false,
                 config
         );
@@ -240,9 +243,9 @@ public class Genome {
         ConnectionGene connection2 = new ConnectionGene(
                 newNode,
                 selectedConnection.getOutNode(),
-                new ConstantWeightInitialization(selectedConnection.getWeight()).initializeWeight(),
+                selectedConnection.getWeight(),
                 true,
-                innovationData.getInnovationNumber() + 1,
+                newToOutInnovation.getInnovationNumber(),
                 selectedConnection.isRecurrent(),
                 config
         );
@@ -282,32 +285,133 @@ public class Genome {
         return recurrent;
     }
 
-    public void prune() {
+    public void prune(boolean removeDisabledConnections) {
+        if (removeDisabledConnections) {
+            ArrayList<ConnectionGene> disabledConnections = new ArrayList<>();
+            for (ConnectionGene conn : connectionGenes) {
+                if (!conn.isEnabled()) {
+                    disabledConnections.add(conn);
+                }
+            }
+
+            for (ConnectionGene connection : disabledConnections) {
+                NodeGene inNode = connection.getInNode();
+                NodeGene outNode = connection.getOutNode();
+
+                if (inNode.acceptsOutgoingConnections()) {
+                    ArrayList<ConnectionGene> outgoingConnections = inNode.getOutgoingConnections();
+                    outgoingConnections.remove(connection);
+                }
+
+                if (outNode.acceptsIncomingConnections()) {
+                    ArrayList<ConnectionGene> incomingConnections = outNode.getIncomingConnections();
+                    incomingConnections.remove(connection);
+
+                    if (connection.isRecurrent() && outNode instanceof OutputNode) {
+                        OutputNode outputNode = (OutputNode) outNode;
+                        ArrayList<ConnectionGene> recurrentConnections = outputNode.getInComingRecurrentConnections();
+                        if (recurrentConnections != null) {
+                            recurrentConnections.remove(connection);
+                        }
+                    } else if (connection.isRecurrent() && outNode instanceof HiddenNode) {
+                        HiddenNode hiddenNode = (HiddenNode) outNode;
+                        ArrayList<ConnectionGene> recurrentConnections = hiddenNode.getInComingRecurrentConnections();
+                        if (recurrentConnections != null) {
+                            recurrentConnections.remove(connection);
+                        }
+                    }
+
+                    if (outNode instanceof OutputNode) {
+                        OutputNode outputNode = (OutputNode) outNode;
+                        if (outputNode.getBiasConnection() == connection) {
+                            outputNode.setBiasConnection(null);
+                        }
+                    } else if (outNode instanceof HiddenNode) {
+                        HiddenNode hiddenNode = (HiddenNode) outNode;
+                        if (hiddenNode.getBiasConnection() == connection) {
+                            hiddenNode.setBiasConnection(null);
+                        }
+                    }
+                }
+            }
+
+            connectionGenes.removeAll(disabledConnections);
+        }
+
         boolean nodesPruned = true;
+
         while (nodesPruned) {
             nodesPruned = false;
+
             Iterator<NodeGene> nodeIterator = nodeGenes.iterator();
             while (nodeIterator.hasNext()) {
                 NodeGene node = nodeIterator.next();
-                if (node instanceof HiddenNode) {
-                    if (node.getIncomingConnections().isEmpty()) {
-                        nodeIterator.remove();
-                        nodesPruned = true;
-                        ArrayList<ConnectionGene> outgoingConnections = node.getOutgoingConnections();
-                        connectionGenes.removeAll(outgoingConnections);
-                    } else if (node.getOutgoingConnections().isEmpty()) {
-                        nodeIterator.remove();
-                        nodesPruned = true;
-                        ArrayList<ConnectionGene> incomingConnections = node.getIncomingConnections();
-                        connectionGenes.removeAll(incomingConnections);
+
+                if (!(node instanceof HiddenNode)) {
+                    continue;
+                }
+
+                ArrayList<ConnectionGene> incomingConnections = node.getIncomingConnections();
+                ArrayList<ConnectionGene> outgoingConnections = node.getOutgoingConnections();
+
+                if (incomingConnections.isEmpty()) {
+                    for (ConnectionGene conn : outgoingConnections) {
+                        NodeGene targetNode = conn.getOutNode();
+                        if (targetNode.acceptsIncomingConnections()) {
+                            ArrayList<ConnectionGene> targetIncomingConnections = targetNode.getIncomingConnections();
+                            targetIncomingConnections.remove(conn);
+
+                            if (conn.isRecurrent() && targetNode instanceof OutputNode) {
+                                OutputNode outputNode = (OutputNode) targetNode;
+                                ArrayList<ConnectionGene> recurrentConnections = outputNode.getInComingRecurrentConnections();
+                                if (recurrentConnections != null) {
+                                    recurrentConnections.remove(conn);
+                                }
+                            } else if (conn.isRecurrent() && targetNode instanceof HiddenNode) {
+                                HiddenNode hiddenNode = (HiddenNode) targetNode;
+                                ArrayList<ConnectionGene> recurrentConnections = hiddenNode.getInComingRecurrentConnections();
+                                if (recurrentConnections != null) {
+                                    recurrentConnections.remove(conn);
+                                }
+                            }
+
+                            if (targetNode instanceof OutputNode) {
+                                OutputNode outputNode = (OutputNode) targetNode;
+                                if (outputNode.getBiasConnection() == conn) {
+                                    outputNode.setBiasConnection(null);
+                                }
+                            } else if (targetNode instanceof HiddenNode) {
+                                HiddenNode hiddenNode = (HiddenNode) targetNode;
+                                if (hiddenNode.getBiasConnection() == conn) {
+                                    hiddenNode.setBiasConnection(null);
+                                }
+                            }
+                        }
                     }
+
+                    connectionGenes.removeAll(outgoingConnections);
+                    nodeIterator.remove();
+                    nodesPruned = true;
+                }
+                else if (outgoingConnections.isEmpty()) {
+                    for (ConnectionGene conn : incomingConnections) {
+                        NodeGene sourceNode = conn.getInNode();
+                        if (sourceNode.acceptsOutgoingConnections()) {
+                            ArrayList<ConnectionGene> sourceOutgoingConnections = sourceNode.getOutgoingConnections();
+                            sourceOutgoingConnections.remove(conn);
+                        }
+                    }
+
+                    connectionGenes.removeAll(incomingConnections);
+                    nodeIterator.remove();
+                    nodesPruned = true;
                 }
             }
         }
     }
 
     public GeneticEncoding getGeneticEncoding() {
-        GeneticEncoding geneticEncoding = new GeneticEncoding(config);
+        GeneticEncoding geneticEncoding = new GeneticEncoding(config, populationId);
         geneticEncoding.loadGenome(this);
         return geneticEncoding;
     }
@@ -393,7 +497,7 @@ public class Genome {
                 ConnectionGene newConnection = new ConnectionGene(
                         newInNode,
                         newOutNode,
-                        new ConstantWeightInitialization(connection.getWeight()).initializeWeight(),
+                        connection.getWeight(),
                         connection.isEnabled(),
                         connection.getInnovationNumber(),
                         connection.isRecurrent(),
@@ -402,38 +506,54 @@ public class Genome {
                 newConnections.add(newConnection);
             }
         }
-        return new Genome(newNodes, newConnections, config);
+        return new Genome(newNodes, newConnections, config, populationId);
+    }
+
+
+    public JSONObject toJSON() {
+        JSONObject jsonGenome = new JSONObject();
+        jsonGenome.put("id", this.ID);
+
+        JSONArray nodeGenesArray = new JSONArray();
+        for (NodeGene node : this.nodeGenes) {
+            JSONObject nodeJson = new JSONObject();
+            nodeJson.put("id", node.getId());
+            nodeJson.put("type", getNodeTypeString(node));
+            nodeGenesArray.put(nodeJson);
+        }
+        jsonGenome.put("nodeGenes", nodeGenesArray);
+
+        JSONArray connectionGenesArray = new JSONArray();
+        for (ConnectionGene connection : this.connectionGenes) {
+            JSONObject connJson = new JSONObject();
+            connJson.put("innovationNumber", connection.getInnovationNumber());
+            connJson.put("inNodeId", connection.getInNode().getId());
+            connJson.put("outNodeId", connection.getOutNode().getId());
+            connJson.put("enabled", connection.isEnabled());
+            connJson.put("weight", connection.getWeight());
+            connJson.put("recurrent", connection.isRecurrent());
+            connectionGenesArray.put(connJson);
+        }
+        jsonGenome.put("connectionGenes", connectionGenesArray);
+
+        jsonGenome.put("fitness", this.fitness);
+        jsonGenome.put("populationId", this.populationId);
+
+        return jsonGenome;
+    }
+
+    private String getNodeTypeString(NodeGene node) {
+        if (node instanceof InputNode) return "INPUT";
+        if (node instanceof HiddenNode) return "HIDDEN";
+        if (node instanceof OutputNode) return "OUTPUT";
+        if (node instanceof BiasNode) return "BIAS";
+        return "UNKNOWN";
     }
 
     public void saveGenome(String filePath) {
         try {
-            JSONObject jsonObject = new JSONObject();
-            JSONArray nodesArray = new JSONArray();
-            JSONArray connectionsArray = new JSONArray();
-
-            for (NodeGene node : nodeGenes) {
-                JSONObject nodeJson = new JSONObject();
-                nodeJson.put("id", node.getId());
-                nodeJson.put("type", node.getClass().getSimpleName());
-                nodeJson.put("lastOutput", node.getLastOutput());
-                nodesArray.put(nodeJson);
-            }
-
-            for (ConnectionGene connection : connectionGenes) {
-                JSONObject connJson = new JSONObject();
-                connJson.put("inNode", connection.getInNode().getId());
-                connJson.put("outNode", connection.getOutNode().getId());
-                connJson.put("weight", connection.getWeight());
-                connJson.put("enabled", connection.isEnabled());
-                connJson.put("recurrent", connection.isRecurrent());
-                connJson.put("innovationNumber", connection.getInnovationNumber());
-                connectionsArray.put(connJson);
-            }
-
-            jsonObject.put("nodes", nodesArray);
-            jsonObject.put("connections", connectionsArray);
-
-            Files.write(Paths.get(filePath), jsonObject.toString(4).getBytes(StandardCharsets.UTF_8));
+            JSONObject jsonGenome = this.toJSON();
+            Files.write(Paths.get(filePath), jsonGenome.toString(4).getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -451,8 +571,16 @@ public class Genome {
         return ID;
     }
 
+    public void setId(int id) {
+        this.ID = id;
+    }
+
     public double getFitness() {
         return fitness;
+    }
+
+    public void setFitness(double fitness) {
+        this.fitness = fitness;
     }
 
     public double getAdjustedFitness() {

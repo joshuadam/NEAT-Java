@@ -1,8 +1,10 @@
 package com.joshuadamian.neat.core.population;
 
+import com.joshuadamian.neat.util.GenomeBuilder;
 import com.joshuadamian.neat.util.StaticManager;
 import com.joshuadamian.neat.config.Config;
 import com.joshuadamian.neat.core.genome.Genome;
+import com.joshuadamian.neat.util.trackers.PopulationTracker;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationTracker;
 
 import java.util.*;
@@ -12,7 +14,6 @@ public class Population {
 
     private ArrayList<Genome> genomes = new ArrayList<>();
     private ArrayList<Species> species = new ArrayList<>();
-    private int eliteCount;
     private ArrayList<Genome> eliteGenomes = new ArrayList<>();
     private Genome[] newGeneration;
     private Config config;
@@ -21,27 +22,26 @@ public class Population {
     private boolean stale = false;
     private InnovationTracker innovationTracker;
     private int generation = 0;
+    private int populationId;
     private int speciesCounter = 1;
     private double bestFitness = 0;
     private double age_since_last_improvement = 0;
 
-    public Population(int populationSize, Genome baseGenome) {
-        for (int i = 0; i < populationSize; i++) {
+    public Population(Config config) {
+        this.config = config;
+        this.populationId = PopulationTracker.getNextPopulationId();
+        this.innovationTracker = StaticManager.getInnovationTracker(this.populationId);
+
+        Genome baseGenome = GenomeBuilder.buildGenome(config, this.populationId);
+
+        for (int i = 0; i < config.getPopulationSize(); i++) {
             genomes.add(baseGenome.copy());
         }
         for (Genome genome : genomes) {
             genome.reinitializeWeights();
         }
-        config = baseGenome.getConfig();
-        newGeneration = new Genome[config.getPopulationSize()];
-        this.innovationTracker = StaticManager.getInnovationTracker(config);
-    }
 
-    public Population(ArrayList<Genome> genomes, Config config) {
-        this.genomes = genomes;
-        this.config = config;
         newGeneration = new Genome[config.getPopulationSize()];
-        this.innovationTracker = StaticManager.getInnovationTracker(config);
     }
 
     public void speciate() {
@@ -77,7 +77,6 @@ public class Population {
     public void evolve() {
         stale = false;
         allStagnated = false;
-        eliteCount = 0;
         newGenerationIndex = 0;
         newGeneration = new Genome[config.getPopulationSize()];
         eliteGenomes.clear();
@@ -93,9 +92,6 @@ public class Population {
         genomes.clear();
         Collections.addAll(genomes, newGeneration);
 
-        for (Genome genome : genomes) {
-            genome.prune();
-        }
         generation++;
     }
 
@@ -143,25 +139,29 @@ public class Population {
 
     private void saveEliteGenomes() {
         sortGenomes();
+        eliteGenomes.clear();
+
         for (Species species : species) {
             if (species.getGenomes().size() > 5) {
                 eliteGenomes.add(species.getBestGenome().copy());
-                eliteCount++;
             }
         }
-        for (int i = 0; i < config.getNumOfElite(); i++) {
-            Genome bestGenome = genomes.get(i);
-            boolean isUnique = true;
+
+        int index = 0;
+        while (eliteGenomes.size() < config.getNumOfElite() && index < genomes.size()) {
+            Genome candidate = genomes.get(index);
+            boolean isDuplicate = false;
+
             for (Genome eliteGenome : eliteGenomes) {
-                if (eliteGenome != null && eliteGenome.equalsGenome(bestGenome)) {
-                    isUnique = false;
+                if (eliteGenome == candidate || eliteGenome.equalsGenome(candidate)) {
+                    isDuplicate = true;
                     break;
                 }
             }
-            if (isUnique) {
-                eliteGenomes.add(bestGenome.copy());
-                eliteCount++;
+            if (!isDuplicate) {
+                eliteGenomes.add(candidate.copy());
             }
+            index++;
         }
     }
 
@@ -299,7 +299,7 @@ public class Population {
     }
 
     private void calculateOffspring() {
-        int remainingPopulation = config.getPopulationSize() - eliteCount;
+        int remainingPopulation = config.getPopulationSize() - eliteGenomes.size();
         double totalAdjustedFitness = 0;
         for (Species s : species) {
             s.setAdjustedFitness();

@@ -13,9 +13,17 @@ public class InnovationData {
         this.inNodeID = inNode.getId();
         this.outNodeID = outNode.getId();
     }
+
+    public InnovationData(InnovationType innovationType, int inNodeID, int outNodeID) {
+        this.innovationType = innovationType;
+        this.inNodeID = inNodeID;
+        this.outNodeID = outNodeID;
+    }
+
     public int getInnovationNumber() {
         return innovationNumber;
     }
+
     public void setInnovationNumber(int number) {
         innovationNumber = number;
     }

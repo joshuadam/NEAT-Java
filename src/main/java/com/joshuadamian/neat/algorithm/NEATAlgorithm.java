@@ -14,19 +14,7 @@ public class NEATAlgorithm {
 
     public NEATAlgorithm(Config config) {
         this.config = config;
-        Genome baseGenome = GenomeBuilder.buildGenome(config, true);
-        population = new Population(config.getPopulationSize(), baseGenome);
-    }
-
-    public NEATAlgorithm(Config config, Genome genome) {
-        this.config = config;
-        Genome baseGenome = genome;
-        population = new Population(config.getPopulationSize(), baseGenome);
-    }
-
-    public NEATAlgorithm(Config config, ArrayList<Genome> genomes) {
-        this.config = config;
-        population = new Population(genomes, config);
+        population = new Population(config);
     }
 
     public void run() {
@@ -43,18 +31,6 @@ public class NEATAlgorithm {
                 System.out.println("Target fitness reached");
                 break;
             }
-        }
-    }
-
-    public void run(int iterations) {
-        population.evaluatePopulation();
-        population.speciate();
-        for (int i = 0; i < iterations; i++) {
-            population.evolve();
-            population.evaluatePopulation();
-            population.speciate();
-            System.out.println("Generation: " + population.getGeneration()
-                    + " best fitness: " + population.getBestGenome().getFitness());
         }
     }
 

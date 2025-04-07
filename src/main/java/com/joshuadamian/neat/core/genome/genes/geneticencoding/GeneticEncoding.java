@@ -4,7 +4,6 @@ import com.joshuadamian.neat.config.Config;
 import com.joshuadamian.neat.core.genome.genes.connectiongene.ConnectionGene;
 import com.joshuadamian.neat.core.genome.genes.nodegene.*;
 import com.joshuadamian.neat.core.genome.Genome;
-import com.joshuadamian.neat.weightinitialization.ConstantWeightInitialization;
 
 import java.util.*;
 
@@ -17,11 +16,13 @@ public class GeneticEncoding {
     private NodeGeneData biasNode = null;
     private double fitness;
     private Config config;
+    private int populationId;
 
-    public GeneticEncoding(Config config) {
+    public GeneticEncoding(Config config, int populationId) {
         this.connectionGenesMap = new HashMap<>();
         this.nodeGenesMap = new HashMap<>();
         this.config = config;
+        this.populationId = populationId;
     }
 
     public void loadGenome(Genome genome) {
@@ -68,184 +69,100 @@ public class GeneticEncoding {
     }
 
     public GeneticEncoding crossover(GeneticEncoding otherParent) {
-        GeneticEncoding offspring = new GeneticEncoding(config);
+        GeneticEncoding offspring = new GeneticEncoding(config, this.populationId);
         double thisFitness = this.getFitness();
         double otherFitness = otherParent.getFitness();
 
-        for (Map.Entry<Integer, ConnectionGeneData> entry : this.connectionGenesMap.entrySet()) {
+        GeneticEncoding bestParent = null;
+        GeneticEncoding worstParent = null;
+        if (thisFitness > otherFitness) {
+            bestParent = this;
+            worstParent = otherParent;
+        } else if (otherFitness > thisFitness) {
+            bestParent = otherParent;
+            worstParent = this;
+        } else {
+            bestParent = this.getNumConnections() < otherParent.getNumConnections() ? this : otherParent;
+            worstParent = this.getNumConnections() < otherParent.getNumConnections() ? otherParent : this;
+        }
+
+        for (Map.Entry<Integer, ConnectionGeneData> entry : bestParent.connectionGenesMap.entrySet()) {
             int innovationNumber = entry.getKey();
             ConnectionGeneData currentGene = entry.getValue();
 
-            if (otherParent.hasInnovationNumber(innovationNumber)) {
-                ConnectionGeneData parent2Gene = otherParent.getConnectionByInnovationNumber(innovationNumber);
-                GeneticEncoding selectedParent = Math.random() < 0.5 ? this : otherParent;
+            if (worstParent.hasInnovationNumber(innovationNumber)) {
+                ConnectionGeneData parent2Gene = worstParent.getConnectionByInnovationNumber(innovationNumber);
+                GeneticEncoding selectedParent = Math.random() < 0.5 ? bestParent : worstParent;
                 ConnectionGeneData selectedGene = selectedParent.getConnectionByInnovationNumber(innovationNumber);
                 boolean isEnabled =
                         !currentGene.isEnabled() || !parent2Gene.isEnabled()
                                 ? Math.random() > config.getKeepDisabledOnCrossOverRate()
                                 : true;
-                if (config.getKeepDisabledOnCrossOverRate() == 1.0) {
+
+                if (config.getKeepDisabledOnCrossOverRate() == -1.0) {
                     isEnabled = selectedGene.isEnabled();
                 }
-                ConnectionGeneData offspringConnection = new ConnectionGeneData(
-                        selectedGene.getInNodeID(),
-                        selectedGene.getOutNodeID(),
-                        selectedGene.getWeight(),
-                        isEnabled,
-                        selectedGene.getInnovationNumber(),
-                        selectedGene.isRecurrent()
-                );
-                offspring.addConnection(offspringConnection);
 
-                if (!offspring.hasNodeID(selectedGene.getInNodeID())) {
-                    NodeGeneData inNode = new NodeGeneData(
-                            selectedGene.getInNodeID(),
-                            selectedParent.getNodeByID(selectedGene.getInNodeID()).getNodeType()
-                    );
-                    offspring.addNode(inNode);
-                }
-                if (!offspring.hasNodeID(selectedGene.getOutNodeID())) {
-                    NodeGeneData outNode = new NodeGeneData(
-                            selectedGene.getOutNodeID(),
-                            selectedParent.getNodeByID(selectedGene.getOutNodeID()).getNodeType()
-                    );
-                    offspring.addNode(outNode);
-                }
+                addConnectionAndNodes(offspring, selectedGene, isEnabled, selectedParent, bestParent);
             } else {
-                if (thisFitness > otherFitness) {
-                    boolean isEnabled =
-                            !currentGene.isEnabled()
-                                    ? Math.random() > config.getKeepDisabledOnCrossOverRate()
-                                    : true;
-                    ConnectionGeneData offspringConnection = new ConnectionGeneData(
-                            currentGene.getInNodeID(),
-                            currentGene.getOutNodeID(),
-                            currentGene.getWeight(),
-                            isEnabled,
-                            currentGene.getInnovationNumber(),
-                            currentGene.isRecurrent()
-                    );
-                    offspring.addConnection(offspringConnection);
+                boolean isEnabled =
+                        !currentGene.isEnabled()
+                                ? Math.random() > config.getKeepDisabledOnCrossOverRate()
+                                : true;
 
-                    if (!offspring.hasNodeID(currentGene.getInNodeID())) {
-                        NodeGeneData inNode = new NodeGeneData(
-                                currentGene.getInNodeID(),
-                                this.getNodeByID(currentGene.getInNodeID()).getNodeType()
-                        );
-                        offspring.addNode(inNode);
-                    }
-                    if (!offspring.hasNodeID(currentGene.getOutNodeID())) {
-                        NodeGeneData outNode = new NodeGeneData(
-                                currentGene.getOutNodeID(),
-                                this.getNodeByID(currentGene.getOutNodeID()).getNodeType()
-                        );
-                        offspring.addNode(outNode);
-                    }
-                } else if (thisFitness == otherFitness && Math.random() < 0.5) {
-                    boolean isEnabled =
-                            !currentGene.isEnabled()
-                                    ? Math.random() > config.getKeepDisabledOnCrossOverRate()
-                                    : true;
-                    ConnectionGeneData offspringConnection = new ConnectionGeneData(
-                            currentGene.getInNodeID(),
-                            currentGene.getOutNodeID(),
-                            currentGene.getWeight(),
-                            isEnabled,
-                            currentGene.getInnovationNumber(),
-                            currentGene.isRecurrent()
-                    );
-                    offspring.addConnection(offspringConnection);
-
-                    if (!offspring.hasNodeID(currentGene.getInNodeID())) {
-                        NodeGeneData inNode = this.getNodeByID(currentGene.getInNodeID());
-                        offspring.addNode(inNode);
-                    }
-                    if (!offspring.hasNodeID(currentGene.getOutNodeID())) {
-                        NodeGeneData outNode = this.getNodeByID(currentGene.getOutNodeID());
-                        offspring.addNode(outNode);
-                    }
+                if (config.getKeepDisabledOnCrossOverRate() == -1.0) {
+                    isEnabled = currentGene.isEnabled();
                 }
+
+                addConnectionAndNodes(offspring, currentGene, isEnabled, bestParent, bestParent);
             }
         }
 
-        for (Map.Entry<Integer, ConnectionGeneData> entry : otherParent.connectionGenesMap.entrySet()) {
-            int innovationNumber = entry.getKey();
-            ConnectionGeneData currentGene = entry.getValue();
-
-            if (!this.hasInnovationNumber(innovationNumber)) {
-                if (thisFitness < otherFitness) {
-                    boolean isEnabled =
-                            !currentGene.isEnabled()
-                                    ? Math.random() > config.getKeepDisabledOnCrossOverRate()
-                                    : true;
-                    ConnectionGeneData offspringConnection = new ConnectionGeneData(
-                            currentGene.getInNodeID(),
-                            currentGene.getOutNodeID(),
-                            currentGene.getWeight(),
-                            isEnabled,
-                            currentGene.getInnovationNumber(),
-                            currentGene.isRecurrent()
-                    );
-                    offspring.addConnection(offspringConnection);
-
-                    if (!offspring.hasNodeID(currentGene.getInNodeID())) {
-                        NodeGeneData inNode = new NodeGeneData(
-                                currentGene.getInNodeID(),
-                                otherParent.getNodeByID(currentGene.getInNodeID()).getNodeType()
-                        );
-                        offspring.addNode(inNode);
-                    }
-                    if (!offspring.hasNodeID(currentGene.getOutNodeID())) {
-                        NodeGeneData outNode = new NodeGeneData(
-                                currentGene.getOutNodeID(),
-                                otherParent.getNodeByID(currentGene.getOutNodeID()).getNodeType()
-                        );
-                        offspring.addNode(outNode);
-                    }
-                } else if (thisFitness == otherFitness && Math.random() < 0.5) {
-                    boolean isEnabled =
-                            !currentGene.isEnabled()
-                                    ? Math.random() > config.getKeepDisabledOnCrossOverRate()
-                                    : true;
-                    ConnectionGeneData offspringConnection = new ConnectionGeneData(
-                            currentGene.getInNodeID(),
-                            currentGene.getOutNodeID(),
-                            currentGene.getWeight(),
-                            isEnabled,
-                            currentGene.getInnovationNumber(),
-                            currentGene.isRecurrent()
-                    );
-                    offspring.addConnection(offspringConnection);
-
-                    if (!offspring.hasNodeID(currentGene.getInNodeID())) {
-                        NodeGeneData inNode = otherParent.getNodeByID(currentGene.getInNodeID());
-                        offspring.addNode(inNode);
-                    }
-                    if (!offspring.hasNodeID(currentGene.getOutNodeID())) {
-                        NodeGeneData outNode = otherParent.getNodeByID(currentGene.getOutNodeID());
-                        offspring.addNode(outNode);
-                    }
-                }
-            }
+        for (NodeGeneData inputNode : this.inputNodes) {
+            offspring.addNode(inputNode);
         }
-
-        for (NodeGeneData inputNode : inputNodes) {
-            if (!offspring.hasNodeID(inputNode.getId())) {
-                offspring.addNode(inputNode);
-            }
+        for (NodeGeneData outputNode : this.outputNodes) {
+            offspring.addNode(outputNode);
         }
-
-        for (NodeGeneData outputNode : outputNodes) {
-            if (!offspring.hasNodeID(outputNode.getId())) {
-                offspring.addNode(outputNode);
-            }
-        }
-
-        if (biasNode != null && !offspring.hasNodeID(biasNode.getId())) {
-            offspring.addNode(biasNode);
+        if (this.biasNode != null) {
+            offspring.addNode(this.biasNode);
         }
 
         return offspring;
+    }
+
+    private void addConnectionAndNodes(GeneticEncoding offspring, ConnectionGeneData connection,
+                                       boolean enabled, GeneticEncoding parent, GeneticEncoding bestParent) {
+        NodeType outNodeType = parent.getNodeByID(connection.getOutNodeID()).getNodeType();
+        if (outNodeType == NodeType.INPUT) {
+            throw new IllegalStateException("Invalid connection: Input node " + connection.getOutNodeID()
+                    + " cannot be used as out node.");
+        }
+
+        ConnectionGeneData bestParentConnection = bestParent.getConnectionByInnovationNumber(connection.getInnovationNumber());
+        ConnectionGeneData newConnection = new ConnectionGeneData(
+                connection.getInNodeID(),
+                connection.getOutNodeID(),
+                connection.getWeight(),
+                enabled,
+                connection.getInnovationNumber(),
+                bestParentConnection.isRecurrent()
+        );
+
+        offspring.addConnection(newConnection);
+
+        NodeGeneData inNode = new NodeGeneData(
+                connection.getInNodeID(),
+                parent.getNodeByID(connection.getInNodeID()).getNodeType()
+        );
+
+        NodeGeneData outNode = new NodeGeneData(
+                connection.getOutNodeID(),
+                parent.getNodeByID(connection.getOutNodeID()).getNodeType()
+        );
+
+        offspring.addNode(inNode);
+        offspring.addNode(outNode);
     }
 
     public double calculateCompatibilityDistance(GeneticEncoding otherParent) {
@@ -364,7 +281,7 @@ public class GeneticEncoding {
             ConnectionGene newConnection = new ConnectionGene(
                     newInNode,
                     newOutNode,
-                    new ConstantWeightInitialization(oldConnection.getWeight()).initializeWeight(),
+                    oldConnection.getWeight(),
                     oldConnection.isEnabled(),
                     oldConnection.getInnovationNumber(),
                     oldConnection.isRecurrent(),
@@ -373,7 +290,7 @@ public class GeneticEncoding {
             newConnectionGenes.add(newConnection);
         }
 
-        Genome genome = new Genome(newNodeGenes, newConnectionGenes, config);
+        Genome genome = new Genome(newNodeGenes, newConnectionGenes, config, populationId);
         genome.checkForRecurrentConnections();
         return genome;
     }

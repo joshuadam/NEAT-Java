@@ -4,6 +4,7 @@ import com.joshuadamian.neat.activationfunction.ActivationFunction;
 import com.joshuadamian.neat.config.Config;
 import com.joshuadamian.neat.core.genome.genes.connectiongene.ConnectionGene;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 
 public class HiddenNode extends NodeGene {
@@ -13,7 +14,6 @@ public class HiddenNode extends NodeGene {
     private ArrayList<ConnectionGene> inComingRecurrentConnections = new ArrayList<>();
     private ConnectionGene biasConnection = null;
     private ArrayList<Double> inputs = new ArrayList<>();
-    private boolean hasAlreadyForwardedExpectedInput = false;
     private ActivationFunction activationFunction;
 
     public HiddenNode(int id, Config config) {
@@ -61,7 +61,6 @@ public class HiddenNode extends NodeGene {
                 connection.forwardExpectedInput();
             }
         }
-        hasAlreadyForwardedExpectedInput = true;
     }
 
     @Override
@@ -107,5 +106,17 @@ public class HiddenNode extends NodeGene {
     @Override
     public NodeType getNodeType() {
         return NodeType.HIDDEN;
+    }
+
+    public ArrayList<ConnectionGene> getInComingRecurrentConnections() {
+        return this.inComingRecurrentConnections;
+    }
+
+    public ConnectionGene getBiasConnection() {
+        return this.biasConnection;
+    }
+
+    public void setBiasConnection(ConnectionGene connection) {
+        this.biasConnection = connection;
     }
 }

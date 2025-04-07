@@ -4,9 +4,10 @@ import com.joshuadamian.neat.core.genome.Genome;
 import com.joshuadamian.neat.config.Config;
 import com.joshuadamian.neat.core.genome.genes.connectiongene.ConnectionGene;
 import com.joshuadamian.neat.core.genome.genes.nodegene.*;
+import com.joshuadamian.neat.util.trackers.NodeTracker;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationData;
+import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationTracker;
 import com.joshuadamian.neat.util.trackers.innovationtracker.InnovationType;
-import com.joshuadamian.neat.weightinitialization.ConstantWeightInitialization;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -17,27 +18,31 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class GenomeBuilder {
 
-    public static Genome buildGenome(Config config, boolean connectBias) {
+    public static Genome buildGenome(Config config, int populationId) {
         int numInputs = config.getInputSize();
         int numOutputs = config.getOutputSize();
+
+        NodeTracker nodeTracker = StaticManager.getNodeTracker(populationId);
+        InnovationTracker innovationTracker = StaticManager.getInnovationTracker(populationId);
 
         NodeGene[] nodeGenes = new NodeGene[numInputs + numOutputs + 1];
         ConnectionGene[] connectionGenes = new ConnectionGene[(numInputs + 1) * numOutputs];
 
         for (int i = 0; i < numInputs; i++) {
-            nodeGenes[i] = new InputNode(StaticManager.getNodeTracker(config).getNextNodeID(), config);
+            nodeGenes[i] = new InputNode(StaticManager.getNodeTracker(populationId).getNextNodeId(), config);
         }
 
         for (int i = 0; i < numOutputs; i++) {
-            nodeGenes[numInputs + i] = new OutputNode(StaticManager.getNodeTracker(config).getNextNodeID(), config);
+            nodeGenes[numInputs + i] = new OutputNode(StaticManager.getNodeTracker(populationId).getNextNodeId(), config);
         }
 
         int biasIndex = numInputs + numOutputs;
-        nodeGenes[biasIndex] = new BiasNode(StaticManager.getNodeTracker(config).getNextNodeID(), config);
+        nodeGenes[biasIndex] = new BiasNode(StaticManager.getNodeTracker(populationId).getNextNodeId(), config);
         BiasNode biasNode = (BiasNode) nodeGenes[biasIndex];
 
         int connectionIndex = 0;
@@ -46,8 +51,10 @@ public class GenomeBuilder {
 
             for (int outputIdx = numInputs; outputIdx < numInputs + numOutputs; outputIdx++) {
                 NodeGene outputNode = nodeGenes[outputIdx];
-                InnovationData innovationData = StaticManager.getInnovationTracker(config)
-                        .trackInnovation(InnovationType.addConnection, inputNode, outputNode);
+                InnovationData innovationData = innovationTracker.trackInnovation(
+                        inputNode.getId(),
+                        outputNode.getId()
+                );
 
                 connectionGenes[connectionIndex] = new ConnectionGene(
                         inputNode,
@@ -62,11 +69,13 @@ public class GenomeBuilder {
             }
         }
 
-        if (connectBias) {
+        if (config.getConnectBias()) {
             for (int outputIdx = numInputs; outputIdx < numInputs + numOutputs; outputIdx++) {
                 NodeGene outputNode = nodeGenes[outputIdx];
-                InnovationData innovationData = StaticManager.getInnovationTracker(config)
-                        .trackInnovation(InnovationType.addConnection, biasNode, outputNode);
+                InnovationData innovationData = innovationTracker.trackInnovation(
+                        biasNode.getId(),
+                        outputNode.getId()
+                );
 
                 connectionGenes[connectionIndex] = new ConnectionGene(
                         biasNode,
@@ -91,7 +100,7 @@ public class GenomeBuilder {
             connectionGenesList.add(connectionGene);
         }
 
-        return new Genome(nodeGenesList, connectionGenesList, config);
+        return new Genome(nodeGenesList, connectionGenesList, config, populationId);
     }
 
     public static Genome loadGenome(String filePath, Config config) {
@@ -99,66 +108,87 @@ public class GenomeBuilder {
             String content = new String(Files.readAllBytes(Paths.get(filePath)), StandardCharsets.UTF_8);
             JSONObject jsonObject = new JSONObject(content);
 
-            JSONArray nodesArray = jsonObject.getJSONArray("nodes");
-            Map<Integer, NodeGene> nodeMapping = new HashMap<>();
-            ArrayList<NodeGene> newNodes = new ArrayList<>();
-            ArrayList<ConnectionGene> newConnections = new ArrayList<>();
+            ArrayList<NodeGene> nodeGenes = new ArrayList<>();
+            JSONArray nodeGenesArray = jsonObject.getJSONArray("nodeGenes");
 
-            for (int i = 0; i < nodesArray.length(); i++) {
-                JSONObject nodeJson = nodesArray.getJSONObject(i);
-                int id = nodeJson.getInt("id");
-                String type = nodeJson.getString("type");
-                double lastOutput = nodeJson.getDouble("lastOutput");
+            for (int i = 0; i < nodeGenesArray.length(); i++) {
+                JSONObject nodeData = nodeGenesArray.getJSONObject(i);
+                int id = nodeData.getInt("id");
+                String type = nodeData.getString("type");
 
                 NodeGene node = null;
-                if (type.equals("InputNode")) {
-                    node = new InputNode(id, config);
-                } else if (type.equals("HiddenNode")) {
-                    node = new HiddenNode(id, config);
-                } else if (type.equals("OutputNode")) {
-                    node = new OutputNode(id, config);
-                } else if (type.equals("BiasNode")) {
-                    node = new BiasNode(id, config);
+                switch (type) {
+                    case "INPUT":
+                        node = new InputNode(id, config);
+                        break;
+                    case "HIDDEN":
+                        node = new HiddenNode(id, config);
+                        break;
+                    case "OUTPUT":
+                        node = new OutputNode(id, config);
+                        break;
+                    case "BIAS":
+                        node = new BiasNode(id, config);
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Unknown node type: " + type);
                 }
 
-                if (node != null) {
-                    node.setLastOutput(lastOutput);
-                    newNodes.add(node);
-                    nodeMapping.put(id, node);
-                }
+                nodeGenes.add(node);
             }
 
-            JSONArray connectionsArray = jsonObject.getJSONArray("connections");
-            for (int i = 0; i < connectionsArray.length(); i++) {
-                JSONObject connJson = connectionsArray.getJSONObject(i);
-                int inNodeId = connJson.getInt("inNode");
-                int outNodeId = connJson.getInt("outNode");
-                double weight = connJson.getDouble("weight");
-                boolean enabled = connJson.getBoolean("enabled");
-                boolean recurrent = connJson.getBoolean("recurrent");
-                int innovationNumber = connJson.getInt("innovationNumber");
+            ArrayList<ConnectionGene> connectionGenes = new ArrayList<>();
+            JSONArray connectionGenesArray = jsonObject.getJSONArray("connectionGenes");
 
-                NodeGene inNode = nodeMapping.get(inNodeId);
-                NodeGene outNode = nodeMapping.get(outNodeId);
+            for (int i = 0; i < connectionGenesArray.length(); i++) {
+                JSONObject connData = connectionGenesArray.getJSONObject(i);
+                int inNodeId = connData.getInt("inNodeId");
+                int outNodeId = connData.getInt("outNodeId");
 
-                if (inNode != null && outNode != null) {
-                    ConnectionGene connection = new ConnectionGene(
-                            inNode,
-                            outNode,
-                            new ConstantWeightInitialization(weight).initializeWeight(),
-                            enabled,
-                            innovationNumber,
-                            recurrent,
-                            config
-                    );
-                    newConnections.add(connection);
+                NodeGene inNode = findNodeById(nodeGenes, inNodeId);
+                NodeGene outNode = findNodeById(nodeGenes, outNodeId);
+
+                if (inNode == null || outNode == null) {
+                    throw new IllegalStateException("Connection refers to a non-existing node");
                 }
+
+                ConnectionGene connection = new ConnectionGene(
+                        inNode,
+                        outNode,
+                        connData.getDouble("weight"),
+                        connData.getBoolean("enabled"),
+                        connData.getInt("innovationNumber"),
+                        connData.getBoolean("recurrent"),
+                        config
+                );
+
+                connectionGenes.add(connection);
             }
 
-            return new Genome(newNodes, newConnections, config);
+            int populationId = jsonObject.getInt("populationId");
+            Genome genome = new Genome(nodeGenes, connectionGenes, config, populationId);
+
+            if (jsonObject.has("fitness")) {
+                genome.setFitness(jsonObject.getDouble("fitness"));
+            }
+
+            if (jsonObject.has("id")) {
+                genome.setId(jsonObject.getInt("id"));
+            }
+
+            return genome;
         } catch (IOException | JSONException e) {
             e.printStackTrace();
             return null;
         }
+    }
+
+    private static NodeGene findNodeById(List<NodeGene> nodes, int id) {
+        for (NodeGene node : nodes) {
+            if (node.getId() == id) {
+                return node;
+            }
+        }
+        return null;
     }
 }

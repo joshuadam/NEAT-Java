@@ -6,7 +6,6 @@ import com.joshuadamian.neat.biasinitialization.BiasInitialization;
 import com.joshuadamian.neat.biasinitialization.ConstantBiasInitialization;
 import com.joshuadamian.neat.fitnessfunction.FitnessFunction;
 import com.joshuadamian.neat.fitnessfunction.XOR;
-import com.joshuadamian.neat.util.trackers.ConfigTracker;
 import com.joshuadamian.neat.weightinitialization.RandomWeightInitialization;
 import com.joshuadamian.neat.weightinitialization.WeightInitialization;
 
@@ -15,9 +14,6 @@ public class Config {
 // --------------------------------------
 //         NEAT Configuration
 // --------------------------------------
-
-    // Unique identifier for this NEAT configuration instance
-    private int ID;
 
     // 1) Input/Output Layer Sizes
     private int inputSize = 2; // Number of inputs in the network
@@ -67,16 +63,17 @@ public class Config {
     private double minWeight = -4.0; // Minimum allowed weight value
     private double maxWeight = 4.0; // Maximum allowed weight value
 
+    private boolean connectBias = true;
+
     public Config() {
-        this.ID = ConfigTracker.getNextConfigID();
     }
 
-    public void setID(int ID) {
-        this.ID = ID;
+    public boolean getConnectBias() {
+        return this.connectBias;
     }
 
-    public int getID() {
-        return ID;
+    public void setConnectBias(boolean connectBias) {
+        this.connectBias = connectBias;
     }
 
     public Config setInputSize(int inputsize) {

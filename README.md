@@ -124,6 +124,7 @@ Config config = new Config()
         .setRecurrentConnectionRate(1.0) // Probability of forming recurrent connections
         .setMinWeight(-4.0) // Minimum allowed weight
         .setMaxWeight(4.0); // Maximum allowed weight
+        .setConnectBias(true) // Fully connect bias on network construction
 ```
 
 ### Running the Algorithm

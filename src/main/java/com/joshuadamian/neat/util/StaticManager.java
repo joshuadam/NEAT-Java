@@ -14,42 +14,32 @@ public class StaticManager {
     private static Map<Integer, NodeTracker> nodeTrackerMap = new HashMap<>();
 
 
-    public static InnovationTracker getInnovationTracker(Config config) {
-        if (innovationTrackerMap.containsKey(config.getID())) {
-            return innovationTrackerMap.get((config.getID()));
+    public static InnovationTracker getInnovationTracker(int populationId) {
+        if (innovationTrackerMap.containsKey(populationId)) {
+            return innovationTrackerMap.get((populationId));
         } else {
             InnovationTracker newInnovationTracker = new InnovationTracker();
-            innovationTrackerMap.put(config.getID(), newInnovationTracker);
+            innovationTrackerMap.put(populationId, newInnovationTracker);
             return newInnovationTracker;
         }
     }
 
-    public static InnovationTracker registerInnovationTracker(Config config) {
-        if (innovationTrackerMap.containsKey(config.getID())) {
-            return innovationTrackerMap.get((config.getID()));
-        } else {
-            InnovationTracker newInnovationTracker = new InnovationTracker();
-            innovationTrackerMap.put(config.getID(), newInnovationTracker);
-            return newInnovationTracker;
-        }
-    }
-
-    public static GenomeTracker getGenomeTracker(Config config) {
-        if (genomeTrackerMap.containsKey(config.getID())) {
-            return genomeTrackerMap.get((config.getID()));
+    public static GenomeTracker getGenomeTracker(int populationId) {
+        if (genomeTrackerMap.containsKey(populationId)) {
+            return genomeTrackerMap.get((populationId));
         } else {
             GenomeTracker genomeTracker = new GenomeTracker();
-            genomeTrackerMap.put(config.getID(), genomeTracker);
+            genomeTrackerMap.put(populationId, genomeTracker);
             return genomeTracker;
         }
     }
 
-    public static NodeTracker getNodeTracker(Config config) {
-        if (nodeTrackerMap.containsKey(config.getID())) {
-            return nodeTrackerMap.get((config.getID()));
+    public static NodeTracker getNodeTracker(int populationId) {
+        if (nodeTrackerMap.containsKey(populationId)) {
+            return nodeTrackerMap.get((populationId));
         } else {
-            NodeTracker nodeTracker = new NodeTracker(config);
-            nodeTrackerMap.put(config.getID(), nodeTracker);
+            NodeTracker nodeTracker = new NodeTracker();
+            nodeTrackerMap.put(populationId, nodeTracker);
             return nodeTracker;
         }
     }

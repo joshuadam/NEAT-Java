@@ -13,7 +13,6 @@ public class OutputNode extends NodeGene {
     private ArrayList<ConnectionGene> outgoingConnections = new ArrayList<>();
     private ConnectionGene biasConnection = null;
     private ArrayList<Double> inputs = new ArrayList<>();
-    private double numInputsReceived = 0;
     private ActivationFunction activationFunction;
 
     public OutputNode(int id, Config config) {
@@ -97,5 +96,17 @@ public class OutputNode extends NodeGene {
 
     public void setActivationFunction(ActivationFunction activationFunction) {
         this.activationFunction = activationFunction;
+    }
+
+    public ArrayList<ConnectionGene> getInComingRecurrentConnections() {
+        return this.inComingRecurrentConnections;
+    }
+
+    public ConnectionGene getBiasConnection() {
+        return this.biasConnection;
+    }
+
+    public void setBiasConnection(ConnectionGene connection) {
+        this.biasConnection = connection;
     }
 }
