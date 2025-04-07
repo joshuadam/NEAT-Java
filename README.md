@@ -16,7 +16,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>com.joshuadamian</groupId>
     <artifactId>neat</artifactId>
-    <version>1.0.0</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
@@ -26,7 +26,7 @@ Add the following dependency to your `pom.xml`:
 
 ```kotlin
 dependencies {
-    implementation("com.joshuadamian:neat:1.0.0")
+    implementation("com.joshuadamian:neat:2.0.0")
 }
 ```
 
@@ -34,7 +34,7 @@ dependencies {
 
 ```gradle
 dependencies {
-    implementation 'com.joshuadamian:neat:1.0.0'
+    implementation 'com.joshuadamian:neat:2.0.0'
 }
 ```
 
